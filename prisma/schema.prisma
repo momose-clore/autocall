@@ -1,0 +1,337 @@
+// オートコール（起床確認・自動架電システム）Prisma スキーマ
+// 仕様書 20-22 / 50-51 準拠。単体構築版。
+// 既存システムに統合する場合は Driver/Shift/User を既存モデルへ読み替える。
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// 列挙型
+// ─────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  MANAGER
+  STAFF
+  DRIVER
+}
+
+/// 起床セッションのステータス（仕様書 12）
+enum WakeupStatus {
+  WAITING // 待機中
+  CALLING // 確認中
+  CONFIRMED // 起床済
+  OVERDUE // 起床遅延
+  FAILED // 確認失敗
+  CANCELLED // 対象外
+}
+
+/// 起床確認の方法（仕様書 6）
+enum ConfirmationMethod {
+  LINE
+  PHONE
+  ADMIN
+}
+
+/// 起床時刻の決定方式（仕様書 18）
+enum WakeupMode {
+  FIXED // 固定起床時間
+  BEFORE_SHIFT // 出勤時間から逆算
+}
+
+/// 通知・発信の種別（仕様書 20 wakeup_attempts.type）
+enum AttemptType {
+  LINE_PUSH
+  PHONE_CALL
+  ADMIN_NOTIFICATION
+}
+
+/// Attempt の外部プロバイダ
+enum AttemptProvider {
+  LINE
+  TWILIO
+  INTERNAL
+}
+
+/// Attempt のステータス（Twilio Call Status 等・仕様書 27）
+enum AttemptStatus {
+  QUEUED
+  INITIATED
+  RINGING
+  IN_PROGRESS
+  COMPLETED
+  BUSY
+  FAILED
+  NO_ANSWER
+  CANCELED
+  SENT // LINE push 成功
+  ERROR
+}
+
+/// シフトの勤務状態（仕様書 19）
+enum ShiftStatus {
+  SCHEDULED // 勤務予定
+  ABSENT // 欠勤
+  LEAVE // 休暇
+  CANCELLED // 稼働取消
+  HOLIDAY // 休み
+}
+
+// ─────────────────────────────────────────────
+// 認証・権限（仕様書 54）
+// ─────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(MANAGER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// ドライバー・シフト（既存システムでは再利用する想定）
+// ─────────────────────────────────────────────
+
+model Driver {
+  id        String   @id @default(cuid())
+  name      String
+  /// 表示用電話番号
+  phone     String?
+  /// 発信用 E.164 正規化番号（仕様書 33）
+  phoneE164 String?
+  site      String? // 稼働現場
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shifts        Shift[]
+  wakeupSetting WakeupSetting?
+  sessions      WakeupSession[]
+  lineAccounts  DriverLineAccount[]
+  linkCodes     LineLinkCode[]
+
+  @@index([isActive])
+  @@map("drivers")
+}
+
+model Shift {
+  id        String      @id @default(cuid())
+  driverId  String
+  workDate  DateTime    @db.Date
+  startAt   DateTime // 出勤予定時刻
+  status    ShiftStatus @default(SCHEDULED)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  driver   Driver          @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  sessions WakeupSession[]
+
+  @@unique([driverId, workDate])
+  @@index([workDate])
+  @@map("shifts")
+}
+
+// ─────────────────────────────────────────────
+// 起床確認 設定（仕様書 17 / 20 wakeup_settings）
+// ─────────────────────────────────────────────
+
+model WakeupSetting {
+  id                  String     @id @default(cuid())
+  driverId            String     @unique
+  enabled             Boolean    @default(true)
+  mode                WakeupMode @default(FIXED)
+  /// 固定起床時刻（"HH:mm" JST）
+  fixedWakeupTime     String?    @default("06:00")
+  /// 出勤何分前に起床確認するか
+  minutesBeforeShift  Int        @default(90)
+  callIntervalMinutes Int        @default(3)
+  lineIntervalMinutes Int        @default(10)
+  escalationMinutes   Int        @default(15)
+  maxDurationMinutes  Int        @default(60)
+  phoneEnabled        Boolean    @default(true)
+  lineEnabled         Boolean    @default(true)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@map("wakeup_settings")
+}
+
+// ─────────────────────────────────────────────
+// 起床セッション（1人1日1レコード・仕様書 20 wakeup_sessions）
+// ─────────────────────────────────────────────
+
+model WakeupSession {
+  id                 String              @id @default(cuid())
+  driverId           String
+  shiftId            String?
+  targetDate         DateTime            @db.Date
+  scheduledWakeupAt  DateTime
+  startedAt          DateTime?
+  confirmedAt        DateTime?
+  confirmationMethod ConfirmationMethod?
+  status             WakeupStatus        @default(WAITING)
+  callCount          Int                 @default(0)
+  lineCount          Int                 @default(0)
+  lastCallAt         DateTime?
+  lastLineAt         DateTime?
+  nextCallAt         DateTime?
+  nextLineAt         DateTime?
+  escalatedAt        DateTime?
+  cancelledAt        DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  driver   Driver          @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  shift    Shift?          @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  attempts WakeupAttempt[]
+
+  @@unique([driverId, targetDate]) // 二重生成防止（仕様書 31/51）
+  @@index([targetDate])
+  @@index([status])
+  @@index([nextCallAt])
+  @@index([nextLineAt])
+  @@map("wakeup_sessions")
+}
+
+// ─────────────────────────────────────────────
+// 通知・発信履歴（すべて保存・仕様書 20 wakeup_attempts）
+// ─────────────────────────────────────────────
+
+model WakeupAttempt {
+  id                  String          @id @default(cuid())
+  wakeupSessionId     String
+  type                AttemptType
+  provider            AttemptProvider
+  status              AttemptStatus
+  /// Twilio Call SID / LINE request id 等
+  providerReferenceId String?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  errorCode           String?
+  errorMessage        String?
+  metadata            Json?
+  createdAt           DateTime        @default(now())
+
+  session WakeupSession @relation(fields: [wakeupSessionId], references: [id], onDelete: Cascade)
+
+  @@index([wakeupSessionId])
+  @@index([providerReferenceId])
+  @@map("wakeup_attempts")
+}
+
+// ─────────────────────────────────────────────
+// LINE 連携（仕様書 21/22）
+// ─────────────────────────────────────────────
+
+model DriverLineAccount {
+  id          String   @id @default(cuid())
+  driverId    String
+  lineUserId  String   @unique
+  displayName String?
+  isActive    Boolean  @default(true)
+  linkedAt    DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId])
+  @@map("driver_line_accounts")
+}
+
+/// LINE 連携コード（6桁・有効期限10分・1回のみ・仕様書 22）
+model LineLinkCode {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  driverId  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  driver Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId])
+  @@map("line_link_codes")
+}
+
+// ─────────────────────────────────────────────
+// システム全体設定（シングルトン・仕様書 35/45/46）
+// ─────────────────────────────────────────────
+
+model SystemSetting {
+  id                     Int      @id @default(1)
+  wakeupEnabled          Boolean  @default(true)
+  lineEnabled            Boolean  @default(true)
+  phoneEnabled           Boolean  @default(true)
+  defaultCallInterval    Int      @default(3) // 分
+  defaultLineInterval    Int      @default(10) // 分
+  escalationMinutes      Int      @default(15)
+  maxDurationMinutes     Int      @default(60)
+  skipHolidays           Boolean  @default(true)
+  phoneConfirmDigit      Boolean  @default(true) // 電話「1」で起床確認
+  adminLineNotify        Boolean  @default(true)
+  /// 緊急停止（仕様書 45）
+  emergencyStop          Boolean  @default(false)
+  /// 最低発信間隔（秒・システム下限60・仕様書 46）
+  minCallIntervalSeconds Int      @default(180)
+  /// 1人あたり1時間の最大発信回数（仕様書 45）
+  maxCallsPerPersonHour  Int      @default(15)
+  /// システム全体の1時間最大発信回数（仕様書 45）
+  maxCallsSystemHour     Int      @default(500)
+  /// LINE 月間送信上限（仕様書 34）
+  lineMonthlyQuota       Int      @default(5000)
+  updatedAt              DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+/// 管理者エスカレーション通知先（複数登録可・仕様書 9）
+model AdminNotificationTarget {
+  id        String   @id @default(cuid())
+  name      String
+  /// LINE / EMAIL / PHONE
+  type      String
+  value     String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("admin_notification_targets")
+}
+
+// ─────────────────────────────────────────────
+// 操作ログ（仕様書 43）
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorName  String?
+  action     String
+  targetType String?
+  targetId   String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([targetType, targetId])
+  @@map("audit_logs")
+}
