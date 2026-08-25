@@ -19,7 +19,32 @@
 - git: 2.39.5
 
 ## プロジェクト概要
-（オートコール＝自動架電システムを想定。目的・要件確定後にここへ追記する）
+**起床確認・自動架電システム（単体構築版）**。稼働者・ドライバー向けに、起床時刻に LINE 通知＋自動電話を行い、起床確認が取れるまで再通知・再架電、確認された瞬間に停止、未確認は管理者へエスカレーションするまでを完全自動化する。開発指示書（62セクション）準拠。
+
+- ユーザー選択: 既存システムへの追加ではなく、この `オートコール` フォルダに**新規・単体構築**。将来的に既存の配送アプリ（delivery-app）等と連携する前提。
+- 技術構成: Next.js 16 (App Router) / TypeScript / Prisma 7 (+pg adapter) / PostgreSQL(Neon) / LINE Messaging API / Twilio Programmable Voice / Vercel Cron。
+- 起床判定は常に Asia/Tokyo。二重発信防止・緊急停止・最大継続時間・テストモード等の安全仕様を必須実装。
+
+## 主要コマンド
+- `npm run dev` — 開発サーバ
+- `npm run db:push` — スキーマを DB へ反映（要 DATABASE_URL）
+- 環境変数は `.env.example` 参照（Twilio/LINE/CRON_SECRET/WAKEUP_TEST_MODE 等）
+
+## 実装状況（Phase）
+- [x] Phase 1: 環境構築 / [x] Phase 2: DB設計
+- [x] Phase 3: Provider抽象層（Twilio/LINE、テストモード誤発信防止）
+- [x] Phase 4: 業務ヘルパ（time/phone/config/settings/audit/effective/generate/confirm/notify/send）
+- [x] Phase 5: スケジューラ中核（processTick：開始・再通知・再架電・エスカレーション・最大継続打切り・レート制限）
+- [x] Phase 6: API（cron tick/generate、Twilio voice/gather/status、LINE webhook）＋ Vercel Cron 定義
+- [ ] Phase 7-12: 管理UI（一覧/設定/操作ログ）/ 認証 / seed / 結合検証
+
+## アーキテクチャ要点（復旧用）
+- スケジューラは Vercel Cron が `/api/cron/tick`（毎分）を叩き `processTick()` が全稼働セッションを1ステップ進める。状態機械: WAITING→CALLING→(CONFIRMED|OVERDUE→FAILED|CANCELLED)。
+- 確定は `confirmSession()` が updateMany の条件付き更新で冪等化（LINEボタン/電話「1」/管理者）。確定時に進行中通話を Twilio 側でも終了。
+- 安全仕様: emergencyStop / wakeupEnabled、最低発信間隔（システム下限60秒）、1人・全体の時間あたり発信上限、テストモード（TEST_ALLOW_* 以外へ実発信・実送信しない）。
+- Cron 認証は CRON_SECRET（Authorization: Bearer / x-cron-secret / ?secret=）。毎分 tick は Vercel Pro プラン以上が必要。
 
 ## 変更履歴
 - 2026-08-25: プロジェクト初期化。運用ルールを永続化、git 初期化。
+- 2026-08-25: 起床確認・自動架電システムに確定。Next.js16+Prisma7 構築、DBスキーマ実装。
+- 2026-08-25: Phase 3-6 実装。Provider抽象層・業務ヘルパ・スケジューラ中核・API群・Vercel Cron。tsc strict グリーン。
