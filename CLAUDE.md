@@ -36,7 +36,15 @@
 - [x] Phase 4: 業務ヘルパ（time/phone/config/settings/audit/effective/generate/confirm/notify/send）
 - [x] Phase 5: スケジューラ中核（processTick：開始・再通知・再架電・エスカレーション・最大継続打切り・レート制限）
 - [x] Phase 6: API（cron tick/generate、Twilio voice/gather/status、LINE webhook）＋ Vercel Cron 定義
-- [ ] Phase 7-12: 管理UI（一覧/設定/操作ログ）/ 認証 / seed / 結合検証
+- [x] Phase 7: 認証（HMAC Cookie セッション・proxy ガード・scrypt パスワード・簡易ログイン）
+- [x] Phase 8: 管理UI（shadcn/ui・dark）ダッシュボード/ドライバー/システム設定/操作ログ、緊急停止・手動tick・当日生成・連携コード発行
+- [ ] Phase 9-12: ドライバー/シフトCRUD・通知先管理UI / seed 実DB投入・結合検証（tick/確定フロー） / 本番デプロイ
+
+## UI/認証メモ（復旧用）
+- shadcn/ui（new-york, radix, dark）。globals.css の `--font-sans` はリテラル Geist 指定（循環参照回避）。
+- ルーティング: `/` → `/admin` リダイレクト。`/login`（Server Action ログイン）。`/admin/*` は `src/proxy.ts`（Next16 proxy 規約）が Cookie 一次ガード＋各ページ `requireUser()` で厳密検証。
+- 管理操作は Server Actions（`src/app/admin/actions.ts`）: 起床確認/対象外/手動tick/当日生成/緊急停止/設定更新/連携コード発行。すべて AuditLog 記録。
+- seed 管理者: admin@example.com / パスワード admin1234（本番前に必ず変更）。
 
 ## アーキテクチャ要点（復旧用）
 - スケジューラは Vercel Cron が `/api/cron/tick`（毎分）を叩き `processTick()` が全稼働セッションを1ステップ進める。状態機械: WAITING→CALLING→(CONFIRMED|OVERDUE→FAILED|CANCELLED)。
@@ -48,3 +56,4 @@
 - 2026-08-25: プロジェクト初期化。運用ルールを永続化、git 初期化。
 - 2026-08-25: 起床確認・自動架電システムに確定。Next.js16+Prisma7 構築、DBスキーマ実装。
 - 2026-08-25: Phase 3-6 実装。Provider抽象層・業務ヘルパ・スケジューラ中核・API群・Vercel Cron。tsc strict グリーン。
+- 2026-08-25: Phase 7-8 実装。認証（Cookie/scrypt/proxy）・管理UI（shadcn/ui dark：ダッシュボード/ドライバー/設定/ログ）。next build 成功。
