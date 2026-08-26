@@ -9,7 +9,7 @@
     "lint": "eslint",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
-    "db:seed": "node --experimental-strip-types prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@line/bot-sdk": "^11.2.0",
@@ -43,6 +43,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.2",
     "tailwindcss": "^4",
+    "tsx": "^4.23.12",
     "typescript": "^5"
   }
 }

@@ -31,15 +31,21 @@ export function jstDateAtTime(dateOnly: Date, hhmm: string): Date {
   return fromZonedTime(`${ymd} ${h.padStart(2, "0")}:${(m || "0").padStart(2, "0")}:00`, APP_TZ);
 }
 
-/** その Date が属する JST の日付（JST 0:00 の UTC Date） */
+/** その Date が属する JST の日付の開始インスタント（JST 0:00 = 前日15:00 UTC） */
 export function jstStartOfDay(date: Date): Date {
   const ymd = formatInTimeZone(date, APP_TZ, "yyyy-MM-dd");
   return fromZonedTime(`${ymd} 00:00:00`, APP_TZ);
 }
 
-/** @db.Date へ渡す用: JST 日付の 0:00 を表す UTC Date */
+/**
+ * @db.Date 用: JST カレンダー日付を「UTC 深夜」で表す Date。
+ * Prisma の @db.Date は Date を UTC 基準で日付に丸めるため、JST 深夜の
+ * インスタント（前日15:00 UTC）を渡すと日付が1日前にズレる。これを防ぎ、
+ * 外部システム（正しいカレンダー日を持つ）と一致させる。
+ */
 export function jstDateOnly(date: Date): Date {
-  return jstStartOfDay(date);
+  const ymd = formatInTimeZone(date, APP_TZ, "yyyy-MM-dd");
+  return new Date(`${ymd}T00:00:00.000Z`);
 }
 
 /** 分を加算した新しい Date */

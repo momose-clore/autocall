@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getSystemSetting } from "@/lib/settings";
-import { jstStartOfDay, formatJst, formatJstTime } from "@/lib/time";
+import { jstDateOnly, formatJst, formatJstTime } from "@/lib/time";
 import { statusLabel, statusVariant } from "@/lib/wakeup/status-label";
 import { WakeupStatus } from "@/generated/prisma/client";
 import {
@@ -37,7 +37,7 @@ const ACTIVE = new Set<WakeupStatus>([
 
 export default async function DashboardPage() {
   const system = await getSystemSetting();
-  const today = jstStartOfDay(new Date());
+  const today = jstDateOnly(new Date());
 
   const sessions = await prisma.wakeupSession.findMany({
     where: { targetDate: today },

@@ -38,7 +38,14 @@
 - [x] Phase 6: API（cron tick/generate、Twilio voice/gather/status、LINE webhook）＋ Vercel Cron 定義
 - [x] Phase 7: 認証（HMAC Cookie セッション・proxy ガード・scrypt パスワード・簡易ログイン）
 - [x] Phase 8: 管理UI（shadcn/ui・dark）ダッシュボード/ドライバー/システム設定/操作ログ、緊急停止・手動tick・当日生成・連携コード発行
-- [ ] Phase 9-12: ドライバー/シフトCRUD・通知先管理UI / seed 実DB投入・結合検証（tick/確定フロー） / 本番デプロイ
+- [x] Phase 9: 実DB接続・結合検証。Neon(Vercel Marketplace)接続、db:push/db:seed、generate→tick→電話確定→停止・エスカレーション・最大継続打切りを実DBで検証。TZバグ(@db.Date 1日ズレ)修正
+- [ ] Phase 10-12: ドライバー/シフトCRUD・通知先管理UI / LINE・Twilio 実接続テスト / 本番デプロイ
+
+## DB/実行メモ（復旧用）
+- DB: Neon（Vercel Marketplace統合 `neon-copper-queen`、プロジェクト `autocall`／scope momose-clores-projects）。接続情報は `.env.local`（gitignore）。`vercel env pull` で再取得可。
+- Prisma CLI/seed は `.env.local` を自動で読まないため、prisma.config.ts と seed.ts で dotenv 明示ロード。DDL は `DATABASE_URL_UNPOOLED`（非プール）を使用。
+- seed/検証スクリプトは `tsx` で実行（生成 Prisma Client が拡張子なし import のため node 素実行不可）。`npm run db:seed` / `npx tsx scripts/db-check.ts [show|reset|age <分>|id]`。
+- @db.Date は `jstDateOnly()`（JST日付の UTC 深夜）で保存すること。JST深夜インスタント（前日15:00Z）を渡すと日付が1日ズレる。
 
 ## UI/認証メモ（復旧用）
 - shadcn/ui（new-york, radix, dark）。globals.css の `--font-sans` はリテラル Geist 指定（循環参照回避）。
@@ -57,3 +64,4 @@
 - 2026-08-25: 起床確認・自動架電システムに確定。Next.js16+Prisma7 構築、DBスキーマ実装。
 - 2026-08-25: Phase 3-6 実装。Provider抽象層・業務ヘルパ・スケジューラ中核・API群・Vercel Cron。tsc strict グリーン。
 - 2026-08-25: Phase 7-8 実装。認証（Cookie/scrypt/proxy）・管理UI（shadcn/ui dark：ダッシュボード/ドライバー/設定/ログ）。next build 成功。
+- 2026-08-26: Phase 9。Neon(Vercel Marketplace)接続・db:push/seed。実DBで generate→tick→電話確定→停止/エスカレーション/打切りを結合検証。@db.Date のTZ 1日ズレを jstDateOnly で修正。tsx 導入。

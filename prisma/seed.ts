@@ -1,9 +1,14 @@
+import { config as loadEnv } from "dotenv";
+loadEnv({ path: ".env" });
+loadEnv({ path: ".env.local", override: true });
+
 import { PrismaClient } from "../src/generated/prisma/client.ts";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { hashPassword } from "../src/lib/auth/password.ts";
+import { jstDateOnly, jstDateAtTime } from "../src/lib/time.ts";
 
 // ローカル/検証用の初期データ投入（仕様書 60）。
-// 実行: npm run db:seed（要 DATABASE_URL）
+// 実行: npm run db:seed（.env.local の DATABASE_URL を使用）
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
@@ -52,19 +57,19 @@ async function main() {
     update: {},
   });
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const startAt = new Date(today);
-  startAt.setHours(8, 0, 0, 0);
+  // JST の当日カレンダー日（@db.Date 用）と JST 08:00 出勤
+  const now = new Date();
+  const workDate = jstDateOnly(now);
+  const startAt = jstDateAtTime(now, "08:00");
   await prisma.shift.upsert({
-    where: { driverId_workDate: { driverId: driver.id, workDate: today } },
+    where: { driverId_workDate: { driverId: driver.id, workDate } },
     create: {
       driverId: driver.id,
-      workDate: today,
+      workDate,
       startAt,
       status: "SCHEDULED",
     },
-    update: {},
+    update: { startAt, status: "SCHEDULED" },
   });
 
   // 管理者エスカレーション通知先（LINE）

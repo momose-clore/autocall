@@ -5,7 +5,7 @@ import {
   ShiftStatus,
 } from "@/generated/prisma/client";
 import { getSystemSetting } from "@/lib/settings";
-import { jstDateAtTime, jstStartOfDay, addMinutes } from "@/lib/time";
+import { jstDateAtTime, jstDateOnly, addMinutes } from "@/lib/time";
 
 export interface GenerateResult {
   targetDate: string;
@@ -22,7 +22,7 @@ export interface GenerateResult {
  */
 export async function generateSessionsForDate(day: Date): Promise<GenerateResult> {
   const system = await getSystemSetting();
-  const targetDate = jstStartOfDay(day); // JST 0:00 を表す
+  const targetDate = jstDateOnly(day); // JST カレンダー日（@db.Date 用・UTC深夜）
   const reasons: Record<string, number> = {};
   const bump = (k: string) => (reasons[k] = (reasons[k] || 0) + 1);
 
