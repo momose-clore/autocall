@@ -59,9 +59,17 @@
 - 安全仕様: emergencyStop / wakeupEnabled、最低発信間隔（システム下限60秒）、1人・全体の時間あたり発信上限、テストモード（TEST_ALLOW_* 以外へ実発信・実送信しない）。
 - Cron 認証は CRON_SECRET（Authorization: Bearer / x-cron-secret / ?secret=）。毎分 tick は Vercel Pro プラン以上が必要。
 
+## Git/デプロイ状況（復旧用）
+- GitHub: https://github.com/momose-clore/autocall （**Public**）。`.gitignore` で `.env*`・`.vercel` 除外＝秘密は未push。
+- Vercel: プロジェクト `autocall`（scope momose-clores-projects）に `vercel git connect` 済み。**ただし Vercel GitHub App 未インストールのため push 自動デプロイは未発動**（初回はブラウザでApp許可 or `vercel deploy` 手動）。
+- GitHub Actions: Claude（`.github/workflows/claude.yml` @claudeメンション / `claude-code-review.yml` PRレビュー）。トークンは Secret `CLAUDE_CODE_OAUTH_TOKEN` 参照。
+- Twilio: Pay as you go でアカウント作成・残高¥2,000チャージ済み（Account SID/Auth Token取得可）。番号購入・日本Geo許可・LINE作成は未了（Phase 10 進行中）。
+- ⚠️ **公開＆本番デプロイ前の必須対応**: seed の admin@example.com/`admin1234` は公開コードに露出。本番投入前にパスワード変更 or 本番seedを無効化すること。
+
 ## 変更履歴
 - 2026-08-25: プロジェクト初期化。運用ルールを永続化、git 初期化。
 - 2026-08-25: 起床確認・自動架電システムに確定。Next.js16+Prisma7 構築、DBスキーマ実装。
 - 2026-08-25: Phase 3-6 実装。Provider抽象層・業務ヘルパ・スケジューラ中核・API群・Vercel Cron。tsc strict グリーン。
 - 2026-08-25: Phase 7-8 実装。認証（Cookie/scrypt/proxy）・管理UI（shadcn/ui dark：ダッシュボード/ドライバー/設定/ログ）。next build 成功。
 - 2026-08-26: Phase 9。Neon(Vercel Marketplace)接続・db:push/seed。実DBで generate→tick→電話確定→停止/エスカレーション/打切りを結合検証。@db.Date のTZ 1日ズレを jstDateOnly で修正。tsx 導入。
+- 2026-08-29: Git連携。GitHub リポジトリ作成→Public化、Vercel git connect、Claude GitHub Actions 追加。Twilioアカウント作成・チャージ（Phase 10 実接続テスト準備中）。Webhook絶対URLを VERCEL_URL 由来に。
